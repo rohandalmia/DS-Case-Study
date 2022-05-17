@@ -1,0 +1,215 @@
+---
+title: "Image Compressing Using Clustering"
+author: "Rohan Dalmia"
+output: 
+  prettydoc::html_pretty:
+    theme: architect
+date: "`r Sys.Date()`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+```
+
+In this programming exercise, you are going to apply clustering algorithms for image
+compression. Your task is implementing the clustering parts with an algorithm of your
+choice.
+It is required you implementing the algorithms yourself rather than calling from
+a package.
+
+<br>
+
+# Problem 4.1
+
+```{r, echo = FALSE}
+# function to calculate euclidean distance from the centroid
+euclid_dist = function(pt, centroid) {
+  return(sqrt(sum((pt-centroid)^2)))
+}
+
+# function to perform k-means clustering
+# param: data_mat  - matrix object to calculate k-means
+#        k         - number of clusters
+#        cent_init - initial centroid assignment 
+# return: list object with first element as the cluster centers and 
+#                          second element as the cluster assignment
+
+mykmeans = function(data_mat, k, cent_init){
+
+# empty matrix that will contain the distance of each point from centroid
+temp_mat = matrix(NA, nrow(data_mat), k)
+colnames(temp_mat) = paste0("cent", seq_len(k))
+# loop to fill the matrix with all distance
+for(i in seq_len(nrow(data_mat))) {
+  temp_mat[i,] = apply(cent_init, 1, euclid_dist, data_mat[i,])
+}
+
+# assign clusters based on minimum distance
+first_clust = apply(temp_mat, 1, which.min)
+
+iris_mat_clust = cbind(data_mat, first_clust)
+
+# find new centroids
+cent_mean = as.data.frame(iris_mat_clust) %>% 
+  group_by(first_clust) %>% 
+  summarise(across(everything(), mean))
+
+cent_mean_mat = as.matrix(cent_mean[,-1])
+
+return(list(cent_mean_mat, first_clust))
+}
+
+```
+
+Image on xy axis with dimensions - 
+
+```{r, echo = FALSE}
+# load libraries
+library(shiny)
+library(jpeg)
+library(imager)
+library(shinythemes)
+library(scatterplot3d)
+library(flextable)
+library(kableExtra)
+# read in images
+img_jpg = readJPEG("sydney.jpg")
+img_load = load.image("sydney.jpg")
+plot(img_load, main='Sydney')
+jpg_dim = as.data.frame(t(dim(img_jpg)))
+colnames(jpg_dim) = c("x", "y", "z")
+dim_ft = flextable(jpg_dim)
+```
+
+```{r, echo = FALSE}
+dim_ft %>%
+  theme_booktabs()
+```
+
+
+<br>
+1000 sampled image pixels on a 3D plot
+
+```{r, echo = FALSE}
+# flatten the image
+img_expand = apply(img_jpg, 3, c)
+
+set.seed(999)
+sub_pixels = sample(1:nrow(img_expand), 1000)
+sub_img_expand = img_expand[sub_pixels, ]
+
+options(digits = 3)
+sub_img_expand = round(sub_img_expand, 2)
+
+scatterplot3d(sub_img_expand, pch = 19, 
+                  xlab = "Red", ylab = "Green", zlab = "Blue", 
+                  color = rgb(sub_img_expand[,1], sub_img_expand[,2],
+                              sub_img_expand[,3]))
+
+cluster_vals = c(2, 8, 16, 32)
+```
+
+```{r, eval=FALSE, echo=FALSE}
+
+set.seed(100)
+# store compressed images
+allimg = list()
+# store time and iterations
+totaltime = list()
+iter_list = list()
+cluster_vals = c(2, 8, 16, 32)
+
+for (i in seq_along(cluster_vals)) {
+  cent_init = img_expand[sample(nrow(img_expand), cluster_vals[i]),]
+  k = cluster_vals[i]
+  iter = 1
+  repeat{
+    start_time = Sys.time()
+    C = mykmeans(img_expand, k, cent_init)
+    if (any(identical(cent_init, C[[1]]), iter > 100)) {
+      print(iter)
+      iter_list[i] = iter
+      end_time = Sys.time()
+      totaltime[i] = end_time - start_time
+      print(totaltime[i])
+      break
+    } else {
+      cent_init = C[[1]]
+      iter = iter + 1
+    }
+  }
+  
+  # save the centroids
+  new_img_expand2 = C[[1]][C[[2]],]
+  allimg[[i]] = img_jpg
+  allimg[[i]][, , 1] = matrix(new_img_expand2[, 1], 240, 320)
+  allimg[[i]][, , 2] = matrix(new_img_expand2[, 2], 240, 320)
+  allimg[[i]][, , 3] = matrix(new_img_expand2[, 3], 240, 320)
+}
+
+save(allimg, file = "all_images.RData")
+
+par(mar = c(0,0,1.5,0))
+
+plot(c(0, 320), c(0, 240), main = paste("k =", cluster_vals[1]),
+     xaxt = 'n', yaxt = 'n', bty = 'n', pch = '', ylab = '', xlab = '')
+rasterImage(allimg[[1]], 0, 0, 320, 240)
+plot(c(0, 320), c(0, 240), main = paste("k =", cluster_vals[2]),
+     xaxt = 'n', yaxt = 'n', bty = 'n', pch = '', ylab = '', xlab = '')
+rasterImage(allimg[[2]], 0, 0, 320, 240)
+plot(c(0, 320), c(0, 240), main = paste("k =", cluster_vals[3]),
+     xaxt = 'n', yaxt = 'n', bty = 'n', pch = '', ylab = '', xlab = '')
+rasterImage(allimg[[3]], 0, 0, 320, 240)
+plot(c(0, 320), c(0, 240), main = paste("k =", cluster_vals[4]),
+     xaxt = 'n', yaxt = 'n', bty = 'n', pch = '', ylab = '', xlab = '')
+rasterImage(allimg[[4]], 0, 0, 320, 240)
+
+# saving objects
+time_Df = data.frame(K = cluster_vals, `Converge Time` = unlist(totaltime), Iterations = unlist(iter_list), check.names = F ) 
+save(allimg, file = "all_images.RData")
+save(time_Df, file = "time_df.RData")
+
+```
+
+Using my custom **K-means** function and using cluster values as 2, 8, 16 and 32, I get the below results (the code can be found in the attached RMD) -
+
+<br>
+
+```{r, echo = FALSE}
+load("all_images.RData")
+
+par(mfrow = c(2,2))
+par(mar = c(0,0,1.5,0))
+plot(c(0, 320), c(0, 240), main = paste("k =", cluster_vals[1]),
+     xaxt = 'n', yaxt = 'n', bty = 'n', pch = '', ylab = '', xlab = '')
+rasterImage(allimg[[1]], 0, 0, 320, 240)
+plot(c(0, 320), c(0, 240), main = paste("k =", cluster_vals[2]),
+     xaxt = 'n', yaxt = 'n', bty = 'n', pch = '', ylab = '', xlab = '')
+rasterImage(allimg[[2]], 0, 0, 320, 240)
+plot(c(0, 320), c(0, 240), main = paste("k =", cluster_vals[3]),
+     xaxt = 'n', yaxt = 'n', bty = 'n', pch = '', ylab = '', xlab = '')
+rasterImage(allimg[[3]], 0, 0, 320, 240)
+plot(c(0, 320), c(0, 240), main = paste("k =", cluster_vals[4]),
+     xaxt = 'n', yaxt = 'n', bty = 'n', pch = '', ylab = '', xlab = '')
+rasterImage(allimg[[4]], 0, 0, 320, 240)
+```
+  
+  
+## What did you observe with different K?
+
+K-means in this case clusters similar colors into 'K' groups. Therefore, each cluster centroid is representative of the color vector in RGB color space of its respective cluster. Thus, with increase in K we could see the algorithm was able to capture more colors. 
+  
+  
+## How long does it take to converge for each K?
+
+```{r, echo = FALSE}
+load("time_Df.RData")
+time_ft = flextable(time_Df)
+
+time_ft %>% 
+  theme_booktabs() %>% 
+  autofit()
+
+```
+

@@ -1,0 +1,276 @@
+---
+title: "PCA: Food consumption in Europe area"
+author: "Rohan Dalmia"
+output: 
+  prettydoc::html_pretty:
+    theme: architect
+date: "`r Sys.Date()`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, 
+                      message = FALSE, cache.lazy = FALSE)
+```
+
+The data food-consumption.csv contains 16 countries in the European area and their consumption for 20 food items, such as tea, jam, coffee, yoghurt, and others. There are some missing data entries: you may remove the rows “Sweden”, “Finland”, and “Spain”. 
+The goal is to perform PCA analysis on the data, i.e., find a way to perform linear
+combinations of features across all 20 food-item consumptions, for each country. If we
+extract two principal components, that means we use two singular vectors that
+correspond to the largest singular values of the data matrix, in combining features. You will need to implement PCA by writing your own code. 
+<br>
+
+
+# Problem 3.1
+
+<i> <b> Write down the set-up of PCA for this setting. Explain how the data matrix is set-up
+in this case (e.g., each dimension of the matrix corresponds to what.) Explain in
+words how PCA is performed in this setting. </b> </i>
+
+```{r, echo = FALSE, warning=FALSE, message = FALSE}
+# data read in 
+library(dplyr)
+library(ggplot2)
+library(flextable)
+library(factoextra)
+pca_data = read.csv("food-consumption.csv")
+# removing countries with blank values
+pca_filter = pca_data %>% 
+  filter(!Country %in% c("Spain", "Finland", "Sweden"))
+pca_food = pca_filter
+rownames(pca_food) = pca_filter[,1]
+pca_food = pca_food[,-1]
+```
+
+
+In this case, we are working with a data with 20 columns (features) and 13 rows (observations).
+
+$$  \begin{array}
+    \\
+    Germany \\
+    \vdots \\
+    Ireland
+  \end{array}  \begin{bmatrix}
+    Real Coffee & \cdots\cdots & Crispbread\\
+    90  & \cdots\cdots & 26\\
+    \vdots & \cdots\cdots & \vdots \\
+    7 & \cdots\cdots & 9
+  \end{bmatrix} $$
+
+<br>
+
+In order to perform PCA, we will follow the below steps -  
+
+<br> 
+  
+1) We first scale the data to make sure we are giving equal weights to each feature and the ones with high variance don't cause bias in our results
+  
+  
+```{r}
+# scale values
+scaled_df = apply(pca_food, 2, scale)
+```
+
+<br>
+
+$$  \begin{array}
+    \\
+    Germany \\
+    \vdots \\
+    Ireland
+  \end{array}  \begin{bmatrix}
+    Real Coffee & \cdots\cdots & Crispbread\\
+    \frac{90 - \mu_{RealCoffee}}{\sigma_{RealCoffee}}  & \cdots\cdots & \frac{26 - \mu_{CrispBread}}{\sigma_{CrispBread}}\\
+    \vdots & \cdots\cdots & \vdots \\
+    \frac{7 - \mu_{RealCoffee}}{\sigma_{RealCoffee}} & \cdots & \frac{9 - \mu_{CrispBread}}{\sigma_{CrispBread}}
+  \end{bmatrix} $$
+
+<br>
+
+2) Calculate the covariance matrix for the whole dataset to find variability between features
+
+  
+<br>
+
+$$ \small{
+\begin{bmatrix}
+    var(Real Coffee) & cov(Real Coffee, Instant Coffee)  & \cdots & cov(Real Coffee, Crispbread)\\
+    cov(Instant Coffee, Real Coffee)  & var(Instant Coffee) & \cdots & cov(Instant Coffee, Crispbread)\\
+    \vdots & \vdots & \vdots & \vdots \\
+    cov(Crispbread, Real Coffee) & \cdots & \cdots & var(Crispbread)
+  \end{bmatrix}} $$
+  
+<br>
+
+```{r}
+food.cov = cov(scaled_df)
+```
+
+<br>
+
+3) Calculate the eigen vectors and the eigenvalues to find the magnitude and direction of the vector that explains the most variability
+
+```{r}
+food.eigen = eigen(food.cov)
+```
+
+<br>
+
+$$ \begin{gathered}
+Av = \lambda v \\
+Av - \lambda v = 0 \\
+(A - \lambda I)v = 0 \\
+\begin{bmatrix}
+    \frac{90 - \mu_{RealCoffee}}{\sigma_{RealCoffee}} - \lambda  & \cdots\cdots & \frac{26 - \mu_{CrispBread}}{\sigma_{CrispBread}}\\
+    \vdots & \ddots & \vdots \\
+    \frac{7 - \mu_{RealCoffee}}{\sigma_{RealCoffee}} & \cdots\cdots & \frac{9 - \mu_{CrispBread}}{\sigma_{CrispBread}}  - \lambda 
+  \end{bmatrix} \times \begin{bmatrix} v1 \\ \vdots \\ v20 \end{bmatrix} = 0; \\
+  \: where \: A \: is \: covariance \: matrix ,
+  \lambda \: is \: eigenvalue \: associated \: with \: eigenvector \: v
+\end{gathered} $$
+
+<br>
+
+4) Pick top k (in this case 2) eigenvectors
+
+```{r}
+loading = food.eigen$vectors[,1:2]
+```
+
+
+```{r, echo = FALSE}
+loading = -loading
+loading_df = data.frame(loading) 
+colnames(loading_df) <- c("PCV 1", "PCV 2")
+loading_df$Features = colnames(pca_food)
+loading_df = select(loading_df, 3, everything())
+head(loading_df) %>% flextable() %>%
+  theme_vanilla() %>% 
+  autofit()
+
+```
+
+<br>
+
+5) Transform the original data
+
+```{r}
+# Calculate Principal Components scores
+PC1 = as.matrix(scaled_df) %*% loading[,1]
+PC2 = as.matrix(scaled_df) %*% loading[,2]
+PC = data.frame(State = rownames(pca_food), PC1, PC2)
+```
+
+```{r echo = FALSE}
+PC %>% flextable() %>%
+  theme_vanilla() %>% 
+  autofit()
+
+PVE = food.eigen$values / sum(food.eigen$values)
+```
+
+<hr>
+
+# Problem 3.2
+
+<i> <b> Suppose we aim to find top k principal components. Write down the mathematical
+optimization problem involved for solving this problem. Explain the procedure to find
+the top k principal components in performing PCA. </b> </i>
+
+In order to find the top k principal components, we need to first find the first principal component loading vector that solves the below optimization problem, where
+we have a data $X$, with $p$ features and $n$ observations. $\phi$ denotes the loadings of our principal components. 
+
+<br>
+
+$$ \underset{\phi_{11}....\phi_{p1}}{maximize} \left\{ \frac{1}{n} \sum_{i = 1}^n \left(\sum_{j=1}^p \phi_{j1}x_{ij} \right)^2 \right\} subject \: to \: \sum_{j = 1}^p \phi_{j1}^2 = 1  $$
+After finding the first principal component, the second one can be found by the below optimization problem 
+
+<br>
+
+$$ \underset{\phi_{12}....\phi_{p2}}{maximize} \left\{ \frac{1}{n} \sum_{i = 1}^n \left(\sum_{j=1}^p \phi_{j2}x_{ij} \right)^2 \right\} subject \: to \: \sum_{j = 1}^p \phi_{j2}^2 = 1 \: and \:  \phi_1 \: \perp \phi_2  $$
+<br>
+
+Similarly for the third principal component, 
+
+$$ \underset{\phi_{13}....\phi_{p3}}{maximize} \left\{ \frac{1}{n} \sum_{i = 1}^n \left(\sum_{j=1}^p \phi_{j3}x_{ij} \right)^2 \right\} subject \: to \: \sum_{j = 1}^p \phi_{j3}^2 = 1, \: \phi_3 \: \perp \phi_1 \: and \: \phi_3 \: \perp \phi_2 $$
+$$ \vdots \\ \vdots  $$
+
+<br>
+
+For the $k^{th}$ principal component 
+
+$$ \underset{\phi_{1k}....\phi_{pk}}{maximize} \left\{ \frac{1}{n} \sum_{i = 1}^n \left(\sum_{j=1}^p \phi_{jk}x_{ij} \right)^2 \right\} subject \: to \: \sum_{j = 1}^p \phi_{jk}^2 = 1 \: and \:  \phi_{k} \: \perp \: all \: \phi_{k-1} \: loadings  $$
+Alternatively, the above statements can also be expressed in the form  - 
+
+$$ \underset{\phi: \: ||\phi||^2 = 1} {\text{argmax}} \: \phi^TA\:\phi, \\
+{\text{where A is } p\times p {\text{ matrix of the form } X^TX} }$$
+
+
+<hr>
+
+# Problem 3.3
+
+<i> <b> Find the top two principal component vectors for the dataset and plot them (plot a value of the vector as a one-dimensional function). Describe do you see any pattern. </b> </i>
+
+Looking at the below plots, we can infer that the first principal component vector puts equal weight on almost all items except for Real Coffee. No eye catching patterns can be inferred from the second principal component vector other than the weight on Real Coffee, which the first vector did not cover. 
+
+```{r, echo = FALSE}
+ggplot(loading_df, aes(Features, `PCV 1`)) +
+    geom_linerange(
+    aes(x = Features, ymin = 0, ymax = `PCV 1`), 
+    color = "lightgray", size = 1.5
+    ) + geom_point(aes(color = Features), size = 2) + theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+        legend.position = "none") + ggtitle("Features vs PCV 1")
+```
+
+```{r, echo = FALSE}
+ggplot(loading_df, aes(Features, `PCV 2`)) +
+    geom_linerange(
+    aes(x = Features, ymin = 0, ymax = `PCV 2`), 
+    color = "lightgray", size = 1.5
+    ) + geom_point(aes(color = Features), size = 2) + theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+        legend.position = "none") + ggtitle("Features vs PCV 2")
+```
+<br>
+However, when the two principal component vectors are plotted together some interesting patterns can be seen distinctly. Garlic and Olive Oil are positively correlated. We can also infer from this plot the negative correlation between countries consuming Garlic and Olive Oil vs other food items (except Real Coffee). Consumption of real coffee shows almost no correlation with Yogurt and Tinned fruit.
+
+```{r, echo = FALSE}
+pca_result = prcomp(pca_food, scale. = TRUE, center = TRUE)
+pca_result$rotation = -pca_result$rotation
+pca_result$x = -pca_result$x
+fviz_pca_var(pca_result, alpha.var="contrib", invisible = "quanti.sup") +
+  theme(legend.position = "none") 
+# fviz_pca_biplot(pca_result, label = "all")
+```
+
+
+# Problem 3.4
+
+<i> <b> Now project each data point using the top two principal component vectors (thus now
+each data point will be represented using a two-dimensional vector). Draw a scatter
+plot of two-dimensional reduced representation for each country. What pattern can
+you observe? </b>  </i>
+
+From the scatter plot we can learn that food consumption habits of the people from Denmark, England, Portugal and Ireland are much more distinctive, since their projected locations are on the edges of the plot. Other counties tend to have more moderate food consumption styles, especially France, Belgium and Switzerland.   
+
+
+```{r, echo = FALSE}
+ggplot(PC, aes(PC1, PC2)) + 
+  geom_text(aes(label = State), size = 3) +
+  xlab("First Principal Component") + 
+  ylab("Second Principal Component") + 
+  ggtitle("First Two Principal Components of Food Consumption")
+```
+
+<br>
+
+Countries with high consumption of Garlic tend to have a high consumption of Olive Oil as well - Belgium and Austria. Similarly, consumption of Orange, Potatoes and Sweetners looks high in Germany & Luxemborg. 
+
+```{r, echo = FALSE}
+pca_result = prcomp(pca_food, scale. = TRUE, center = TRUE)
+pca_result$rotation = -pca_result$rotation
+pca_result$x = -pca_result$x
+fviz_pca_biplot(pca_result, label = "all")
+```
+
